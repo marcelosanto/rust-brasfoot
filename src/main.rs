@@ -1,29 +1,69 @@
-use rand::seq::IteratorRandom;
-use rand::Rng; 
+use rand::seq::{IteratorRandom, SliceRandom};
+use rand::Rng;
+
+const CAMPO_LARGURA: i32 = 100;
+const CAMPO_ALTURA: i32 = 50;
+
+#[derive(Debug, Clone, Copy)]
+struct Posicao {
+    x: i32,
+    y: i32,
+}
+
+#[derive(Debug)]
+struct Bola {
+    posicao: Posicao,
+}
+
+impl Bola {
+    fn new() -> Self {
+        Bola {
+            posicao: Posicao {
+                x: CAMPO_LARGURA / 2,
+                y: CAMPO_ALTURA / 2,
+            },
+        }
+    }
+
+    fn mover(&mut self, nova_posicao: Posicao) {
+        self.posicao = nova_posicao;
+    }
+}
 
 #[derive(Debug, Clone)]
-struct Player {
-    name: String,
+struct Jogador {
+    nome: String,
+    posicao: Posicao,
     pass_accuracy: u8,
+    dribble_skill: u8,
     shot_accuracy: u8,
+    defense_skill: u8,
     foul_tendency: u8,
     luck: i8,
     yellow_cards: u8,
     red_card: bool,
 }
 
-impl Player {
+impl Jogador {
     fn new(
-        name: String,
+        nome: String,
         pass_accuracy: u8,
+        dribble_skill: u8,
         shot_accuracy: u8,
+        defense_skill: u8,
         foul_tendency: u8,
         luck: i8,
     ) -> Self {
-        Player {
-            name,
+        Jogador {
+            nome,
+            posicao: Posicao {
+                x: rand::thread_rng().gen_range(0..CAMPO_LARGURA),
+                y: rand::thread_rng().gen_range(0..CAMPO_ALTURA),
+            },
             pass_accuracy,
+            dribble_skill,
             shot_accuracy,
+            defense_skill,
             foul_tendency,
             luck,
             yellow_cards: 0,
@@ -31,7 +71,7 @@ impl Player {
         }
     }
 
-    fn apply_yellow_card(&mut self) -> bool {
+    fn aplicar_cartao_amarelo(&mut self) -> bool {
         self.yellow_cards += 1;
         if self.yellow_cards >= 2 {
             self.red_card = true;
@@ -40,216 +80,203 @@ impl Player {
     }
 }
 
-// Função para gerar um número aleatório com base na precisão do jogador
-fn simulate_event(chance: u8, luck: i8) -> bool {
+// Goleiro com habilidades específicas de defesa
+#[derive(Debug, Clone)]
+struct Goleiro {
+    nome: String,
+    posicao: Posicao,
+    save_skill: u8,
+    luck: i8,
+}
+
+impl Goleiro {
+    fn new(nome: String, save_skill: u8, luck: i8) -> Self {
+        Goleiro {
+            nome,
+            posicao: Posicao {
+                x: 0,
+                y: CAMPO_ALTURA / 2,
+            },
+            save_skill,
+            luck,
+        }
+    }
+
+    // Simula a defesa do goleiro
+    fn tentar_defender(&self) -> bool {
+        simular_evento(self.save_skill, self.luck)
+    }
+}
+
+// Funções para simulação dos eventos
+fn simular_evento(chance: u8, luck: i8) -> bool {
     let mut rng = rand::thread_rng();
     let adjusted_chance = (chance as i8 + luck) as u8;
     rng.gen_range(0..100) < adjusted_chance
 }
 
-fn simulate_pass(player: &Player) -> bool {
-    simulate_event(player.pass_accuracy, player.luck)
+fn simular_passe(jogador: &Jogador) -> bool {
+    simular_evento(jogador.pass_accuracy, jogador.luck)
 }
 
-fn simulate_shot(player: &Player) -> bool {
-    simulate_event(player.shot_accuracy, player.luck)
+fn simular_drible(jogador: &Jogador) -> bool {
+    simular_evento(jogador.dribble_skill, jogador.luck)
 }
 
-fn simulate_foul(player: &Player) -> bool {
-    simulate_event(player.foul_tendency, 0)
+fn simular_chute(jogador: &Jogador) -> bool {
+    simular_evento(jogador.shot_accuracy, jogador.luck)
 }
 
-fn simulate_yellow_card() -> bool {
-    rand::thread_rng().gen_bool(0.2)
+fn simular_interceptacao(defensor: &Jogador) -> bool {
+    simular_evento(defensor.defense_skill, defensor.luck)
 }
 
-fn simulate_corner() -> bool {
-    rand::thread_rng().gen_bool(0.3)
+fn simular_falta(defensor: &Jogador) -> bool {
+    simular_evento(defensor.foul_tendency, defensor.luck)
 }
 
-fn simulate_offside() -> bool {
-    rand::thread_rng().gen_bool(0.15)
+fn log_evento(mensagem: &str) {
+    println!("{}", mensagem);
 }
 
-fn log_event(message: &str) {
-    println!("{}", message);
-}
-
-fn create_team(name_prefix: &str) -> Vec<Player> {
-    let mut team = Vec::new();
-    for i in 0..11 {
-        team.push(Player::new(
-            format!("{} Player {}", name_prefix, i + 1),
+fn criar_time(nome_prefixo: &str) -> (Vec<Jogador>, Goleiro) {
+    let mut time = Vec::new();
+    for i in 0..10 {
+        // 10 jogadores de linha
+        time.push(Jogador::new(
+            format!("{} Jogador {}", nome_prefixo, i + 1),
             rand::thread_rng().gen_range(60..91),
+            rand::thread_rng().gen_range(50..81),
             rand::thread_rng().gen_range(60..86),
+            rand::thread_rng().gen_range(50..85),
             rand::thread_rng().gen_range(5..16),
             rand::thread_rng().gen_range(-5..6),
         ));
     }
-    team
+    let goleiro = Goleiro::new(
+        format!("{} Goleiro", nome_prefixo),
+        rand::thread_rng().gen_range(70..91),
+        rand::thread_rng().gen_range(-5..6),
+    );
+    (time, goleiro)
+}
+
+fn verificar_saida_bola(bola: &Bola) -> Option<&'static str> {
+    if bola.posicao.x < 0 || bola.posicao.x > CAMPO_LARGURA {
+        Some("Lateral")
+    } else if bola.posicao.y < 0 || bola.posicao.y > CAMPO_ALTURA {
+        Some("Escanteio")
+    } else {
+        None
+    }
 }
 
 fn main() {
-    let mut team_a = create_team("Team A");
-    let mut team_b = create_team("Team B");
-    let home_advantage = 5; // Vantagem do time A jogar em casa
+    let (mut team_a, goleiro_a) = criar_time("Time A");
+    let (mut team_b, goleiro_b) = criar_time("Time B");
+    let mut bola = Bola::new();
 
     let mut score_a = 0;
     let mut score_b = 0;
-    let mut shots_on_goal_a = 0;
-    let mut shots_on_goal_b = 0;
-    let mut corners_a = 0;
-    let mut corners_b = 0;
-    let mut offsides_a = 0;
-    let mut offsides_b = 0;
-    let mut fouls_team_a = 0;
-    let mut fouls_team_b = 0;
-    let mut yellow_cards_team_a = 0;
-    let mut yellow_cards_team_b = 0;
-    let mut red_cards_team_a = 0;
-    let mut red_cards_team_b = 0;
 
-    // Simulação da partida (90 minutos)
-    for minute in 0..90 {
-        log_event(&format!("Minuto {}", minute + 1));
+    for minuto in 0..90 {
+        log_evento(&format!("Minuto {}", minuto + 1));
 
-        // Determina qual time tem a posse de bola, considerando a vantagem em casa
-        let possessing_team = if rand::thread_rng().gen_bool(0.55) {
+        let posse = if rand::thread_rng().gen_bool(0.55) {
             "A"
         } else {
             "B"
         };
-
-        let (team, opponent_team) = if possessing_team == "A" {
-            (&mut team_a, &mut team_b)
+        let (time, outro_time, goleiro) = if posse == "A" {
+            (&mut team_a, &mut team_b, &goleiro_b)
         } else {
-            (&mut team_b, &mut team_a)
+            (&mut team_b, &mut team_a, &goleiro_a)
         };
 
-        // Seleciona um jogador para a jogada, excluindo jogadores expulsos
-        let player_with_ball = team
+        let jogador = time
+            .iter_mut()
+            .filter(|p| !p.red_card)
+            .choose(&mut rand::thread_rng())
+            .unwrap();
+        let defensor = outro_time
             .iter_mut()
             .filter(|p| !p.red_card)
             .choose(&mut rand::thread_rng())
             .unwrap();
 
-        log_event(&format!("{} tocou a bola.", player_with_ball.name));
+        log_evento(&format!("{} tenta uma jogada com a bola", jogador.nome));
 
-        // Simula o passe
-        if simulate_pass(player_with_ball) {
-            log_event(&format!(
-                "{} fez um passe bem-sucedido.",
-                player_with_ball.name
-            ));
+        let acao_ataque = ["passar", "driblar", "chutar"]
+            .choose(&mut rand::thread_rng())
+            .unwrap();
 
-            // Simula o chute
-            if simulate_shot(player_with_ball) {
-                log_event(&format!("{} chutou para o gol!", player_with_ball.name));
-                if possessing_team == "A" {
-                    shots_on_goal_a += 1;
-                    if rand::thread_rng().gen_bool(0.1) {
-                        score_a += 1;
-                        log_event("GOOOLLL do Time A!");
+        match *acao_ataque {
+            "passar" => {
+                log_evento(&format!("{} tenta passar a bola", jogador.nome));
+                if simular_passe(jogador) {
+                    if simular_interceptacao(defensor) {
+                        log_evento(&format!("{} interceptou o passe!", defensor.nome));
+                    } else {
+                        log_evento(&format!("Passe bem-sucedido por {}", jogador.nome));
                     }
                 } else {
-                    shots_on_goal_b += 1;
-                    if rand::thread_rng().gen_bool(0.1) {
-                        score_b += 1;
-                        log_event("GOOOLLL do Time B!");
-                    }
-                }
-            } else {
-                // Simula o escanteio
-                if simulate_corner() {
-                    log_event("Escanteio!");
-                    if possessing_team == "A" {
-                        corners_a += 1;
-                    } else {
-                        corners_b += 1;
-                    }
-                }
-                // Simula o impedimento
-                if simulate_offside() {
-                    log_event("Impedimento!");
-                    if possessing_team == "A" {
-                        offsides_a += 1;
-                    } else {
-                        offsides_b += 1;
-                    }
+                    log_evento(&format!(
+                        "Passe de {} falhou e a bola saiu para lateral",
+                        jogador.nome
+                    ));
+                    bola.mover(Posicao {
+                        x: if rand::thread_rng().gen_bool(0.5) {
+                            0
+                        } else {
+                            CAMPO_LARGURA - 1
+                        },
+                        y: rand::thread_rng().gen_range(0..CAMPO_ALTURA),
+                    });
+                    verificar_saida_bola(&bola);
                 }
             }
-        }
-
-        // Simula as faltas e cartões
-        let fouling_player = opponent_team
-            .iter_mut()
-            .filter(|p| !p.red_card)
-            .choose(&mut rand::thread_rng());
-        if let Some(fouling_player) = fouling_player {
-            if simulate_foul(fouling_player) {
-                log_event(&format!("Falta cometida por {}", fouling_player.name));
-                if possessing_team == "A" {
-                    fouls_team_b += 1;
-                    if simulate_yellow_card() {
-                        yellow_cards_team_b += 1;
-                        log_event(&format!(
-                            "{} recebeu um cartão amarelo!",
-                            fouling_player.name
-                        ));
-                        if fouling_player.apply_yellow_card() {
-                            red_cards_team_b += 1;
-                            log_event(&format!(
-                                "{} foi expulso com cartão vermelho!",
-                                fouling_player.name
-                            ));
+            "driblar" => {
+                log_evento(&format!(
+                    "{} tenta driblar o defensor {}",
+                    jogador.nome, defensor.nome
+                ));
+                if simular_drible(jogador) {
+                    if simular_interceptacao(defensor) {
+                        log_evento(&format!("{} interceptou o drible!", defensor.nome));
+                    } else {
+                        log_evento(&format!("Drible bem-sucedido por {}", jogador.nome));
+                    }
+                } else {
+                    log_evento(&format!(
+                        "Drible falhou e o defensor {} interceptou",
+                        defensor.nome
+                    ));
+                }
+            }
+            "chutar" => {
+                log_evento(&format!("{} tenta um chute a gol", jogador.nome));
+                if simular_chute(jogador) {
+                    if goleiro.tentar_defender() {
+                        log_evento(&format!("{} fez a defesa!", goleiro.nome));
+                        if rand::thread_rng().gen_bool(0.5) {
+                            log_evento("A bola foi desviada para escanteio!");
+                        }
+                    } else {
+                        log_evento(&format!("GOOOLLL de {}!", jogador.nome));
+                        if posse == "A" {
+                            score_a += 1;
+                        } else {
+                            score_b += 1;
                         }
                     }
                 } else {
-                    fouls_team_a += 1;
-                    if simulate_yellow_card() {
-                        yellow_cards_team_a += 1;
-                        log_event(&format!(
-                            "{} recebeu um cartão amarelo!",
-                            fouling_player.name
-                        ));
-                        if fouling_player.apply_yellow_card() {
-                            red_cards_team_a += 1;
-                            log_event(&format!(
-                                "{} foi expulso com cartão vermelho!",
-                                fouling_player.name
-                            ));
-                        }
-                    }
+                    log_evento("Chute foi para fora!");
                 }
             }
+            _ => {}
         }
     }
 
-    // Resultado final da partida
-    log_event("Resultado Final:");
-    log_event(&format!("Placar: Time A {} x {} Time B", score_a, score_b));
-    log_event(&format!(
-        "Chutes a gol: Time A {}, Time B {}",
-        shots_on_goal_a, shots_on_goal_b
-    ));
-    log_event(&format!(
-        "Escanteios: Time A {}, Time B {}",
-        corners_a, corners_b
-    ));
-    log_event(&format!(
-        "Impedimentos: Time A {}, Time B {}",
-        offsides_a, offsides_b
-    ));
-    log_event(&format!(
-        "Faltas: Time A {}, Time B {}",
-        fouls_team_a, fouls_team_b
-    ));
-    log_event(&format!(
-        "Cartões amarelos: Time A {}, Time B {}",
-        yellow_cards_team_a, yellow_cards_team_b
-    ));
-    log_event(&format!(
-        "Cartões vermelhos: Time A {}, Time B {}",
-        red_cards_team_a, red_cards_team_b
-    ));
+    log_evento("Resultado Final:");
+    log_evento(&format!("Placar: Time A {} x {} Time B", score_a, score_b));
 }
