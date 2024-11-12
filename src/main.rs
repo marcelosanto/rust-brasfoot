@@ -1,8 +1,11 @@
 use rand::seq::{IteratorRandom, SliceRandom};
 use rand::Rng;
+use std::fmt;
 
 const CAMPO_LARGURA: i32 = 100;
 const CAMPO_ALTURA: i32 = 50;
+const GOL_ALTURA: i32 = 10;
+const GOL_LARGURA: i32 = 5;
 
 #[derive(Debug, Clone, Copy)]
 struct Posicao {
@@ -27,6 +30,25 @@ impl Bola {
 
     fn mover(&mut self, nova_posicao: Posicao) {
         self.posicao = nova_posicao;
+    }
+
+    fn verificar_gol(&self, gol_posicao: Posicao) -> bool {
+        self.posicao.x == gol_posicao.x
+            && (self.posicao.y >= gol_posicao.y - GOL_ALTURA / 2
+                && self.posicao.y <= gol_posicao.y + GOL_ALTURA / 2)
+    }
+
+    fn verificar_trave(&self, gol_posicao: Posicao) -> bool {
+        (self.posicao.x == gol_posicao.x
+            && (self.posicao.y == gol_posicao.y - GOL_ALTURA / 2
+                || self.posicao.y == gol_posicao.y + GOL_ALTURA / 2))
+            || (self.posicao.y == gol_posicao.y
+                && (self.posicao.x == gol_posicao.x - GOL_LARGURA / 2
+                    || self.posicao.x == gol_posicao.x + GOL_LARGURA / 2))
+    }
+
+    fn verificar_lateral(&self) -> bool {
+        self.posicao.x <= 0 || self.posicao.x >= CAMPO_LARGURA
     }
 }
 
@@ -80,7 +102,6 @@ impl Jogador {
     }
 }
 
-// Goleiro com habilidades específicas de defesa
 #[derive(Debug, Clone)]
 struct Goleiro {
     nome: String,
@@ -102,37 +123,20 @@ impl Goleiro {
         }
     }
 
-    // Simula a defesa do goleiro
     fn tentar_defender(&self) -> bool {
         simular_evento(self.save_skill, self.luck)
     }
 }
 
-// Funções para simulação dos eventos
+// Funções de simulação de eventos
 fn simular_evento(chance: u8, luck: i8) -> bool {
     let mut rng = rand::thread_rng();
     let adjusted_chance = (chance as i8 + luck) as u8;
     rng.gen_range(0..100) < adjusted_chance
 }
 
-fn simular_passe(jogador: &Jogador) -> bool {
-    simular_evento(jogador.pass_accuracy, jogador.luck)
-}
-
-fn simular_drible(jogador: &Jogador) -> bool {
-    simular_evento(jogador.dribble_skill, jogador.luck)
-}
-
 fn simular_chute(jogador: &Jogador) -> bool {
     simular_evento(jogador.shot_accuracy, jogador.luck)
-}
-
-fn simular_interceptacao(defensor: &Jogador) -> bool {
-    simular_evento(defensor.defense_skill, defensor.luck)
-}
-
-fn simular_falta(defensor: &Jogador) -> bool {
-    simular_evento(defensor.foul_tendency, defensor.luck)
 }
 
 fn log_evento(mensagem: &str) {
@@ -142,12 +146,11 @@ fn log_evento(mensagem: &str) {
 fn criar_time(nome_prefixo: &str) -> (Vec<Jogador>, Goleiro) {
     let mut time = Vec::new();
     for i in 0..10 {
-        // 10 jogadores de linha
         time.push(Jogador::new(
             format!("{} Jogador {}", nome_prefixo, i + 1),
             rand::thread_rng().gen_range(60..91),
             rand::thread_rng().gen_range(50..81),
-            rand::thread_rng().gen_range(60..86),
+            rand::thread_rng().gen_range(70..96), // Aumenta a precisão para mais gols
             rand::thread_rng().gen_range(50..85),
             rand::thread_rng().gen_range(5..16),
             rand::thread_rng().gen_range(-5..6),
@@ -159,16 +162,6 @@ fn criar_time(nome_prefixo: &str) -> (Vec<Jogador>, Goleiro) {
         rand::thread_rng().gen_range(-5..6),
     );
     (time, goleiro)
-}
-
-fn verificar_saida_bola(bola: &Bola) -> Option<&'static str> {
-    if bola.posicao.x < 0 || bola.posicao.x > CAMPO_LARGURA {
-        Some("Lateral")
-    } else if bola.posicao.y < 0 || bola.posicao.y > CAMPO_ALTURA {
-        Some("Escanteio")
-    } else {
-        None
-    }
 }
 
 fn main() {
@@ -198,82 +191,37 @@ fn main() {
             .filter(|p| !p.red_card)
             .choose(&mut rand::thread_rng())
             .unwrap();
-        let defensor = outro_time
-            .iter_mut()
-            .filter(|p| !p.red_card)
-            .choose(&mut rand::thread_rng())
-            .unwrap();
 
-        log_evento(&format!("{} tenta uma jogada com a bola", jogador.nome));
+        log_evento(&format!("{} tenta um chute a gol!", jogador.nome));
 
-        let acao_ataque = ["passar", "driblar", "chutar"]
-            .choose(&mut rand::thread_rng())
-            .unwrap();
+        if simular_chute(jogador) {
+            let gol_posicao = Posicao {
+                x: if posse == "A" { CAMPO_LARGURA - 1 } else { 0 },
+                y: CAMPO_ALTURA / 2,
+            };
 
-        match *acao_ataque {
-            "passar" => {
-                log_evento(&format!("{} tenta passar a bola", jogador.nome));
-                if simular_passe(jogador) {
-                    if simular_interceptacao(defensor) {
-                        log_evento(&format!("{} interceptou o passe!", defensor.nome));
-                    } else {
-                        log_evento(&format!("Passe bem-sucedido por {}", jogador.nome));
-                    }
+            if bola.verificar_trave(gol_posicao) {
+                log_evento("A bola bateu na trave!");
+            } else if goleiro.tentar_defender() {
+                if rand::thread_rng().gen_bool(0.5) {
+                    log_evento("Defendeu e foi para escanteio!");
                 } else {
-                    log_evento(&format!(
-                        "Passe de {} falhou e a bola saiu para lateral",
-                        jogador.nome
-                    ));
-                    bola.mover(Posicao {
-                        x: if rand::thread_rng().gen_bool(0.5) {
-                            0
-                        } else {
-                            CAMPO_LARGURA - 1
-                        },
-                        y: rand::thread_rng().gen_range(0..CAMPO_ALTURA),
-                    });
-                    verificar_saida_bola(&bola);
+                    log_evento(&format!("{} fez a defesa!", goleiro.nome));
+                }
+            } else if bola.verificar_gol(gol_posicao) {
+                log_evento(&format!("GOOOLLL de {}!", jogador.nome));
+                if posse == "A" {
+                    score_a += 1;
+                } else {
+                    score_b += 1;
                 }
             }
-            "driblar" => {
-                log_evento(&format!(
-                    "{} tenta driblar o defensor {}",
-                    jogador.nome, defensor.nome
-                ));
-                if simular_drible(jogador) {
-                    if simular_interceptacao(defensor) {
-                        log_evento(&format!("{} interceptou o drible!", defensor.nome));
-                    } else {
-                        log_evento(&format!("Drible bem-sucedido por {}", jogador.nome));
-                    }
-                } else {
-                    log_evento(&format!(
-                        "Drible falhou e o defensor {} interceptou",
-                        defensor.nome
-                    ));
-                }
+        } else {
+            if bola.verificar_lateral() {
+                log_evento("A bola saiu pela lateral!");
+            } else {
+                log_evento("Chute foi para fora!");
             }
-            "chutar" => {
-                log_evento(&format!("{} tenta um chute a gol", jogador.nome));
-                if simular_chute(jogador) {
-                    if goleiro.tentar_defender() {
-                        log_evento(&format!("{} fez a defesa!", goleiro.nome));
-                        if rand::thread_rng().gen_bool(0.5) {
-                            log_evento("A bola foi desviada para escanteio!");
-                        }
-                    } else {
-                        log_evento(&format!("GOOOLLL de {}!", jogador.nome));
-                        if posse == "A" {
-                            score_a += 1;
-                        } else {
-                            score_b += 1;
-                        }
-                    }
-                } else {
-                    log_evento("Chute foi para fora!");
-                }
-            }
-            _ => {}
         }
     }
 
